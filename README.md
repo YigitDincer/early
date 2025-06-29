@@ -1,0 +1,1 @@
+uvx --from git+https://github.com/YigitDincer/early.git@main early
