@@ -39,10 +39,7 @@ class Early:
         return self.extract_activities(early_entries)
 
     def get_time_entries(self, begin: date, end: date):
-        #begin = "2025-07-21"
-        #end = "2025-07-21"
-
-        print(f'Getting time entries from {begin} to {end}:')
+        print(f'Uploading time entries from {begin} to {end}:')
         url = f'{self.api_url}/time-entries/{begin}T00:00:00.000/{end}T23:59:59.999'
 
         response = requests.get(url, headers=self.headers)
@@ -148,19 +145,33 @@ class JIRA:
                 print(f'{activity.jira_key} FAILED   : {activity.started_at.day}.{activity.started_at.month}. {spent_seconds}s')
                 raise Exception(f'{response_text}\n{low_level_exception}')
 
-def get_last_week_range():
-    today = datetime.today().date()
-    weekday = today.weekday() # (Monday=0, Sunday=6)
-    start_last_week = today - timedelta(days = weekday + 7) # Last Monday
+def get_last_week_range_relative_to(relative_date : date):
+    weekday = relative_date.weekday() # (Monday=0, Sunday=6)
+    start_last_week = relative_date - timedelta(days = weekday + 7) # Last Monday
     end_last_week = start_last_week + timedelta(days=6) # Last Sunday
     return start_last_week, end_last_week
+
+def get_relevant_time_range():
+    today = datetime.today().date()
+    tomorrow = today + timedelta(days=1)
+
+    if today.month != tomorrow.month: # today is the last day of the month
+        end_of_month = today
+        start_of_month = today.replace(day=1)
+        return start_of_month, end_of_month
+    elif today.weekday() < 4 : # if before Friday
+        last_week_today = today - timedelta(7)
+        return get_last_week_range_relative_to(last_week_today)
+    else:
+        return get_last_week_range_relative_to(today)
+
 
 def main():
     early = Early()
     jira = JIRA()
 
     try:
-        begin, end = get_last_week_range()
+        begin, end = get_relevant_time_range()
         for activity in early.get_activities(begin, end):
             if activity.jira_key and not early.contains_tag(activity, early.tag_success):
                 try:
