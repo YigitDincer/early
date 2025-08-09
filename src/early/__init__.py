@@ -159,7 +159,12 @@ def get_relevant_time_range():
         end_of_month = today
         start_of_month = today.replace(day=1)
         return start_of_month, end_of_month
-    elif today.weekday() < 4 : # if before Friday
+    elif today.month != (today - timedelta(days=7)).month: # one of the first 7 days of the month
+        first_day_of_cur_month = today.replace(day=1)
+        start_of_last_month = today.replace(month=today.month-1)
+        end_of_last_month = first_day_of_cur_month - timedelta(days=1)
+        return start_of_last_month, end_of_last_month
+    elif today.weekday() < 4 : # weekday is less than Friday
         last_week_today = today - timedelta(7)
         return get_last_week_range_relative_to(last_week_today)
     else:
