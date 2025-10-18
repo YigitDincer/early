@@ -5,14 +5,16 @@ import requests
 
 class Activity:
     name = ''
+    folder_id : str
     started_at : datetime
     stopped_at : datetime
     jira_key = None
     early_id = ''
     note = {}
 
-    def __init__(self, name, started_at : datetime, stopped_at : datetime, jira_key, early_id : str, note: dict):
+    def __init__(self, name, folder_id, started_at : datetime, stopped_at : datetime, jira_key, early_id : str, note: dict):
         self.name = name
+        self.folder_id = folder_id
         self.started_at = started_at
         self.stopped_at = stopped_at
         self.jira_key = jira_key
@@ -26,13 +28,10 @@ class Early:
     api_url = 'https://api.early.app/api/v4'
     headers = {'Authorization': f'Bearer {os.environ["TOKEN_EARLY"]}'}
     
-    tag_failed = ''
-    tag_tempo = ''
-
     def __init__(self):
         tags = self.fetch_tags()
-        self.tag_failed = self.get_tag_with_label(tags, 'FAILED')
-        self.tag_success = self.get_tag_with_label(tags, 'Tempo')
+        self.tags_failed = {t["folderId"]:t["id"] for t in tags if t["label"] == "FAILED"}
+        self.tags_success= {t["folderId"]:t["id"] for t in tags if t["label"] == "Tempo"}
 
     def get_activities(self, begin: date, end: date):
         early_entries = self.get_time_entries(begin, end)
@@ -68,6 +67,7 @@ class Early:
 
         return Activity( \
             name = activity_name,
+            folder_id = time_entry['activity']['folderId'],
             started_at = datetime.fromisoformat(duration['startedAt']),
             stopped_at = datetime.fromisoformat(duration['stoppedAt']),
             jira_key = self.get_jira_key_from_str(activity_name),
@@ -79,8 +79,9 @@ class Early:
         url = f'{self.api_url}/tags-and-mentions'
 
         response = requests.get(url, headers=self.headers)
-        data = response.json()
-        return data
+        response.raise_for_status()
+
+        return response.json()['tags']
 
     def get_tag_with_label(self, tags, label : str):
         for tag in tags['tags']:
@@ -93,21 +94,21 @@ class Early:
 
         response_get = requests.get(url, headers=self.headers)
         data = response_get.json()
-        data['note']['text']=f"<{{{{|t|{tag}|}}}}> {text}"
+        data['note']['text']=f"<{{{{|t|{tag[activity.folder_id]}|}}}}> {text}"
 
         response = requests.patch(url, headers=self.headers, json = data)
         if not response:
             response.raise_for_status()
 
     def mark_success(self, activity : Activity):
-        self.tag_activity(activity, self.tag_success['id'])
+        self.tag_activity(activity, self.tags_success)
 
     def mark_fail(self, activity: Activity, error: str):
-        self.tag_activity(activity, self.tag_failed['id'], error)
+        self.tag_activity(activity, self.tags_failed, error)
 
     def contains_tag(self, activity: Activity, tag: dict):
         if activity.note:
-            return f"<{{{{|t|{tag['id']}|}}}}>" in activity.note
+            return f"<{{{{|t|{tag[activity.folder_id]}|}}}}>" in activity.note
         else:
             return False
 
@@ -178,7 +179,7 @@ def main():
     try:
         begin, end = get_relevant_time_range()
         for activity in early.get_activities(begin, end):
-            if activity.jira_key and not early.contains_tag(activity, early.tag_success):
+            if activity.jira_key and not early.contains_tag(activity, early.tags_success):
                 try:
                     early.mark_success(activity)
                     jira.upload_activity(activity)
